@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Admin Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: #f7fafc;
+      font-family: 'Inter', 'Roboto', Arial, sans-serif;
+      color: #222;
+    }
+    .card {
+      background: #fff;
+      border: 1px solid #e3e8ee;
+      border-radius: 1rem;
+      box-shadow: 0 2px 24px 0 rgba(44, 62, 80, 0.08);
+      padding: 1.5rem;
+    }
+    table {
+      width: 100%;
+      background: #fff;
+      border-radius: 0.5rem;
+      overflow: hidden;
+    }
+    th, td {
+      border-bottom: 1px solid #e3e8ee;
+      padding: 0.5rem;
+      text-align: left;
+    }
+    th {
+      background-color: #f1f5f9;
+      color: #2563eb;
+      font-weight: 600;
+    }
+    .sticky-nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: #fff;
+      border-bottom: 1px solid #e3e8ee;
+    }
+    .copy-btn {
+      background: #e0e7ef;
+      border: none;
+      color: #2563eb;
+      font-size: 0.8rem;
+      border-radius: 0.3rem;
+      padding: 0.1rem 0.5rem;
+      margin-left: 0.2rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .copy-btn:hover {
+      background: #2563eb;
+      color: #fff;
+    }
+    .row-hover:hover, .row-hover:focus-within {
+      background: #f1f5f9 !important;
+      transition: background 0.2s;
+    }
+    .avatar {
+      width: 2.5rem;
+      height: 2.5rem;
+      border-radius: 9999px;
+      margin-right: 0.75rem;
+      object-fit: cover;
+      border: 2px solid #2563eb;
+    }
+    /* Modal styles */
+    .modal-bg {
+      background: rgba(0,0,0,0.5);
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-box {
+      background: #fff;
+      border-radius: 1rem;
+      padding: 2rem;
+      color: #222;
+      text-align: center;
+      min-width: 300px;
+      box-shadow: 0 2px 24px 0 rgba(44, 62, 80, 0.12);
+    }
+    .modal-btn {
+      padding: 0.5rem 1.2rem;
+      border-radius: 0.5rem;
+      font-weight: bold;
+      margin: 0 0.5rem;
+      border: none;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .modal-btn.delete { background: #ef4444; color: #fff; }
+    .modal-btn.cancel { background: #2563eb; color: #fff; }
+    .modal-btn.delete:hover { background: #b91c1c; }
+    .modal-btn.cancel:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body class="relative overflow-x-hidden">
+
+  <!-- Sticky Navbar -->
+  <nav class="w-full p-4 sticky-nav flex flex-col sm:flex-row sm:justify-between items-center">
+    <div class="flex items-center mb-2 sm:mb-0">
+      <img src="https://api.dicebear.com/7.x/bottts/svg?seed=admin" class="avatar" alt="Admin Avatar">
+      <h1 class="text-2xl font-bold text-[#2563eb]">Admin Dashboard</h1>
+    </div>
+    <div class="text-sm flex items-center gap-2">
+      <span class="mr-4">Admin Email: <strong>{{ admin_email }}</strong></span>
+      <form method="GET" action="/export-contacts" class="inline">
+        <button type="submit" class="px-3 py-1 bg-[#2563eb] text-white rounded hover:bg-blue-700 transition">Export CSV</button>
+      </form>
+      <a href="/logout" class="px-3 py-1 bg-[#2563eb] text-white rounded hover:bg-blue-700 transition ml-2">Logout</a>
+    </div>
+  </nav>
+
+  <main class="p-4 space-y-6 z-10 relative">
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="bg-green-100 text-green-800 p-2 rounded text-sm mb-2">
+          {{ message }}
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    <!-- Stats -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="card">
+        <h2 class="text-xl font-bold text-[#2563eb]">👁️ Viewer Count</h2>
+        <p class="text-3xl font-mono mt-2">{{ viewer_count }}</p>
+      </div>
+      <div class="card">
+        <h2 class="text-xl font-bold text-[#2563eb]">📥 Contacts</h2>
+        <p class="text-3xl font-mono mt-2">{{ contacts|length }}</p>
+      </div>
+      <div class="card">
+        <h2 class="text-xl font-bold text-[#2563eb]">⚙️ Tech Stack</h2>
+        <ul class="list-disc ml-6 mt-2 text-sm text-gray-800">
+          <li>Flask</li>
+          <li>SQLite</li>
+          <li>Tailwind CSS</li>
+          <li>HTML + Jinja2</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Search Input -->
+    <input type="text" placeholder="🔍 Search contacts..." onkeyup="filterTable(this.value)"
+           class="px-3 py-2 rounded w-full border border-gray-300 bg-white">
+
+    <!-- Contact Table -->
+    <div class="card overflow-x-auto">
+      <h2 class="text-xl font-bold mb-3 text-[#2563eb]">📩 Contact Submissions</h2>
+      <table class="text-sm">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Company</th>
+            <th>Message</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for contact in contacts %}
+          <tr class="row-hover transition">
+            <td>{{ loop.index }}</td>
+            <td>{{ contact[1] }}</td>
+            <td>
+              {{ contact[2] }}
+              <button class="copy-btn" onclick="copyToClipboard('{{ contact[2] }}', this)">Copy</button>
+            </td>
+            <td>
+              {{ contact[3] }}
+              <button class="copy-btn" onclick="copyToClipboard('{{ contact[3] }}', this)">Copy</button>
+            </td>
+            <td>{{ contact[4] }}</td>
+            <td>{{ contact[5] }}</td>
+            <td>
+              <form method="POST" action="/delete-contact/{{ contact[0] }}" onsubmit="return openDeleteModal(this);">
+                <button type="submit" class="bg-red-600 hover:bg-red-800 text-white px-2 py-1 rounded text-xs">🗑 Delete</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="deleteModal" class="modal-bg hidden">
+    <div class="modal-box">
+      <p class="mb-4">Are you sure you want to delete this contact?</p>
+      <button class="modal-btn delete" onclick="confirmDelete()">Delete</button>
+      <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+
+  <script>
+    function filterTable(value) {
+      const rows = document.querySelectorAll("table tbody tr");
+      rows.forEach(row => {
+        row.style.display = row.innerText.toLowerCase().includes(value.toLowerCase()) ? "" : "none";
+      });
+    }
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text);
+      btn.textContent = "Copied!";
+      setTimeout(() => btn.textContent = "Copy", 1200);
+    }
+    let deleteForm = null;
+    function openDeleteModal(form) {
+      deleteForm = form;
+      document.getElementById('deleteModal').classList.remove('hidden');
+      return false;
+    }
+    function closeModal() {
+      deleteForm = null;
+      document.getElementById('deleteModal').classList.add('hidden');
+    }
+    function confirmDelete() {
+      if (deleteForm) deleteForm.submit();
+      closeModal();
+    }
+    let timeout;
+    function resetTimeout() {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        window.location.href = "/logout";
+      }, 10 * 60 * 1000);
+    }
+    window.onload = resetTimeout;
+    document.onmousemove = resetTimeout;
+    document.onkeydown = resetTimeout;
+  </script>
+</body>
+</html>

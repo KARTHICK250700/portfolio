@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Login & OTP Verification</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      background: #f4f8fb;
+      font-family: 'Inter', 'Roboto', Arial, sans-serif;
+      color: #222;
+      min-height: 100vh;
+    }
+    .admin-card {
+      background: #fff;
+      border-radius: 1.25rem;
+      border: 1px solid #e3e8ee;
+      box-shadow: 0 2px 24px 0 rgba(44, 62, 80, 0.08);
+      transition: box-shadow 0.2s;
+    }
+    .admin-card:hover {
+      box-shadow: 0 4px 32px 0 rgba(44, 62, 80, 0.12);
+    }
+    input:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px #2563eb;
+      border-color: #2563eb;
+    }
+    .disabled {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body class="flex items-center justify-center min-h-screen px-4">
+
+  <div class="w-full max-w-sm p-8 admin-card z-10">
+    <div class="flex justify-center mb-4">
+      <img src="/static/images/logo.png" alt="Company Logo" class="w-14 h-14 rounded-full shadow" />
+    </div>
+    <h2 class="text-2xl font-bold text-center mb-6 text-[#2563eb]">Admin Login</h2>
+
+    <!-- Step 1: Email Form -->
+    <form id="emailForm" class="space-y-5" autocomplete="off">
+      <div>
+        <label for="email" class="block text-sm mb-1 text-gray-700 font-medium">Admin Email</label>
+        <input id="email" type="email" name="email" required placeholder="admin@example.com"
+          class="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-900 text-center tracking-wide focus:ring-0"
+          aria-label="Admin Email">
+        <p id="emailError" class="text-xs text-red-600 mt-1 hidden">Please enter a valid email address.</p>
+      </div>
+      <button id="sendOtpBtn" type="submit"
+        class="w-full py-2 px-4 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold rounded-lg tracking-widest transition transform hover:scale-105 shadow-md flex items-center justify-center">
+        <span id="btnText">Send OTP</span>
+        <svg id="loadingSpinner" class="hidden animate-spin h-5 w-5 ml-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>
+      </button>
+    </form>
+
+    <!-- Step 2: OTP Form (hidden initially) -->
+    <form id="otpForm" class="space-y-5 hidden" autocomplete="off">
+      <div>
+        <label for="otp" class="block text-sm mb-1 text-gray-700 font-medium">Enter 6-digit OTP</label>
+        <input id="otp" type="text" name="otp" maxlength="6" minlength="6" pattern="\d{6}" required
+               placeholder="******"
+               class="w-full px-4 py-2 rounded-lg border border-gray-300 bg-white text-gray-900 text-center text-xl tracking-widest focus:ring-0"
+               aria-label="6-digit OTP">
+        <p id="otpError" class="text-xs text-red-600 mt-1 hidden">Please enter a valid 6-digit OTP.</p>
+      </div>
+      <button id="verifyBtn" type="submit"
+              class="w-full py-2 px-4 bg-[#2563eb] hover:bg-[#1d4ed8] text-white font-bold rounded-lg tracking-widest transition transform hover:scale-105 shadow-md flex items-center justify-center">
+        <span id="verifyBtnText">Verify</span>
+        <svg id="otpLoadingSpinner" class="hidden animate-spin h-5 w-5 ml-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>
+      </button>
+      <p id="resend-otp" class="text-center mt-2 text-blue-600 cursor-pointer hover:underline text-sm" tabindex="0" role="button">
+        Didn't receive OTP? <span id="resendText">Resend</span>
+      </p>
+      <p id="cooldown" class="text-center mt-2 text-gray-500 text-xs hidden"></p>
+    </form>
+
+    <p class="text-xs text-gray-500 mt-6 text-center">
+      Never share your OTP. We will never ask for it.
+    </p>
+    <div id="flashMsg" class="mt-4 text-center"></div>
+  </div>
+
+  <script>
+    // Email step
+    const emailForm = document.getElementById('emailForm');
+    const emailInput = document.getElementById('email');
+    const emailError = document.getElementById('emailError');
+    const sendOtpBtn = document.getElementById('sendOtpBtn');
+    const btnText = document.getElementById('btnText');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    // OTP step
+    const otpForm = document.getElementById('otpForm');
+    const otpInput = document.getElementById('otp');
+    const otpError = document.getElementById('otpError');
+    const verifyBtn = document.getElementById('verifyBtn');
+    const verifyBtnText = document.getElementById('verifyBtnText');
+    const otpLoadingSpinner = document.getElementById('otpLoadingSpinner');
+    const resendOtp = document.getElementById('resend-otp');
+    const cooldown = document.getElementById('cooldown');
+    const flashMsg = document.getElementById('flashMsg');
+    let cooldownTimer = null;
+    let cooldownSeconds = 30;
+    let currentEmail = "";
+
+    function showFlash(msg, type="success") {
+      flashMsg.innerHTML = `<div class="p-2 rounded ${type == "success" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}">${msg}</div>`;
+      setTimeout(() => flashMsg.innerHTML = "", 4000);
+    }
+
+    // Email validation
+    emailInput.addEventListener('input', function() {
+      if (validateEmail(emailInput.value)) {
+        emailError.classList.add('hidden');
+      } else {
+        emailError.classList.remove('hidden');
+      }
+    });
+
+    emailForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (!validateEmail(emailInput.value)) {
+        emailError.classList.remove('hidden');
+        return;
+      }
+      emailError.classList.add('hidden');
+      btnText.style.display = 'none';
+      loadingSpinner.classList.remove('hidden');
+      sendOtpBtn.classList.add('disabled');
+      sendOtpBtn.disabled = true;
+
+      fetch('/api/send-otp', {
+        method: 'POST',
+        body: new FormData(emailForm)
+      })
+      .then(res => res.json())
+      .then(data => {
+        btnText.style.display = 'inline';
+        loadingSpinner.classList.add('hidden');
+        sendOtpBtn.classList.remove('disabled');
+        sendOtpBtn.disabled = false;
+        if (data.status === 'success') {
+          emailForm.classList.add('hidden');
+          otpForm.classList.remove('hidden');
+          currentEmail = emailInput.value;
+          startCooldown();
+          showFlash(data.message, "success");
+        } else {
+          showFlash(data.message, "error");
+        }
+      })
+      .catch(() => {
+        btnText.style.display = 'inline';
+        loadingSpinner.classList.add('hidden');
+        sendOtpBtn.classList.remove('disabled');
+        sendOtpBtn.disabled = false;
+        showFlash("Network error. Please try again.", "error");
+      });
+    });
+
+    // OTP validation
+    otpInput.addEventListener('input', function() {
+      if (validateOTP(otpInput.value)) {
+        otpError.classList.add('hidden');
+      } else {
+        otpError.classList.remove('hidden');
+      }
+    });
+
+    otpForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      if (!validateOTP(otpInput.value)) {
+        otpError.classList.remove('hidden');
+        return;
+      }
+      otpError.classList.add('hidden');
+      verifyBtnText.style.display = 'none';
+      otpLoadingSpinner.classList.remove('hidden');
+      verifyBtn.classList.add('disabled');
+      verifyBtn.disabled = true;
+
+      const fd = new FormData();
+      fd.append('email', currentEmail);
+      fd.append('otp', otpInput.value);
+
+      fetch('/api/verify-otp', {
+        method: 'POST',
+        body: fd
+      })
+      .then(res => res.json())
+      .then(data => {
+        verifyBtnText.style.display = 'inline';
+        otpLoadingSpinner.classList.add('hidden');
+        verifyBtn.classList.remove('disabled');
+        verifyBtn.disabled = false;
+        if (data.status === 'success') {
+          showFlash("OTP Verified! Redirecting...", "success");
+          setTimeout(() => window.location.href = "/admin", 1500);
+        } else {
+          showFlash(data.message, "error");
+        }
+      })
+      .catch(() => {
+        verifyBtnText.style.display = 'inline';
+        otpLoadingSpinner.classList.add('hidden');
+        verifyBtn.classList.remove('disabled');
+        verifyBtn.disabled = false;
+        showFlash("Network error. Please try again.", "error");
+      });
+    });
+
+    // Resend OTP logic
+    resendOtp.addEventListener('click', function() {
+      if (resendOtp.classList.contains('disabled')) return;
+      resendOtp.classList.add('disabled');
+      resendOtp.style.opacity = '0.6';
+
+      const fd = new FormData();
+      fd.append('email', currentEmail);
+
+      fetch('/api/send-otp', {
+        method: 'POST',
+        body: fd
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          startCooldown();
+          showFlash("OTP resent!", "success");
+        } else {
+          showFlash(data.message, "error");
+        }
+      });
+    });
+
+    function startCooldown() {
+      cooldownSeconds = 30;
+      resendOtp.classList.add('disabled');
+      resendOtp.style.opacity = '0.6';
+      cooldown.classList.remove('hidden');
+      updateCooldownText();
+      cooldownTimer = setInterval(() => {
+        cooldownSeconds--;
+        updateCooldownText();
+        if (cooldownSeconds <= 0) {
+          clearInterval(cooldownTimer);
+          cooldown.classList.add('hidden');
+          resendOtp.classList.remove('disabled');
+          resendOtp.style.opacity = '1';
+        }
+      }, 1000);
+    }
+
+    function updateCooldownText() {
+      cooldown.textContent = `You can resend OTP in ${cooldownSeconds} seconds.`;
+    }
+
+    function validateEmail(email) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+    function validateOTP(otp) {
+      return /^\d{6}$/.test(otp);
+    }
+  </script>
+</body>
+</html>
